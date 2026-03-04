@@ -10,6 +10,8 @@ description: Use when multiple `review-output-format` JSON files must be merged 
 Merge multiple JSON files produced by `review-output-format`, create one GitHub PR review payload, and submit it in one API call.
 
 This skill guarantees:
+- semantic-similarity decisions are made by the agent (not by script heuristics)
+- the script performs deterministic transforms only (exact dedupe, sorting, anchor parsing, payload build, submit)
 - merged findings are sorted by severity (`Blocker`, `Major`, `Minor`, `Info`, `Nit`)
 - each severity level is rendered with a dedicated emoji for fast scanning
 - summary starts with an explicit AI-generated attribution and manual follow-up note
@@ -30,6 +32,21 @@ This skill guarantees:
 - `payload_output` (optional)
   - default: `github-review-payload.json`
 
+## Required Semantic Merge Step (Agent, Not Script)
+
+Before running the script, the agent must consolidate semantically similar findings across `input_files` manually:
+
+1. read all findings from all input files
+2. group findings that describe the same issue
+3. merge info inside each group into one final finding:
+   - keep the highest severity
+   - preserve the best anchor (`path` + `line`) when available
+   - merge `why`, `risk_if_unchanged`, `evidence`, and `change_request` content without losing unique details
+4. write a deterministic pre-merged JSON file (same `review-output-format`)
+5. run this script using that pre-merged file as input
+
+The script intentionally does **not** perform semantic matching or semantic merge.
+
 Inline anchor resolution for each finding:
 1. use `path` + `line` directly if present
 2. otherwise parse from `scope` with `<path>:<line>`
@@ -40,8 +57,7 @@ Inline anchor resolution for each finding:
 ```bash
 python3 ./merge-review-json-and-submit-pr-review/scripts/merge_and_submit_review.py \
   --pr-link "https://github.com/pingcap/tidb/pull/12345" \
-  --input review-a.json \
-  --input review-b.json \
+  --input semantic-merged-review.json \
   --merged-output merged-review-output.json \
   --payload-output github-review-payload.json
 ```
