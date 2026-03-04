@@ -35,7 +35,8 @@ Emit one JSON object summarizing orchestration status:
   "review_outputs": [],
   "merge_submit": {},
   "cleanup": {},
-  "status": "success"
+  "status": "success",
+  "reason": ""
 }
 ```
 
@@ -43,6 +44,10 @@ Emit one JSON object summarizing orchestration status:
 - `success`
 - `partial-failure` (review/merge failed but cleanup attempted)
 - `failed` (prepare failed, or critical orchestration failure)
+
+`reason` values:
+- empty string on success
+- machine-readable failure reason on non-success (for example `subagent-dispatch-unavailable`)
 
 ## Direct Skill Invocation Rule
 
@@ -64,11 +69,13 @@ Forbidden in this skill:
 ## Subagent Execution Hard Gate
 
 - For step 2, invoke `dispatching-parallel-agents` by workflow intent (parallel, independent tasks).
+- Before launching reviewer tasks, validate that Task/subagent dispatch is available in the current runtime.
 - Step 2 MUST use the Task/subagent mechanism.
 - The parent agent MUST NOT run any of the 5 review skills inline.
 - Dispatch all 5 review subagents in one batch so they run concurrently.
-- If Task/subagent dispatch is unavailable, stop and return `failed` with reason `subagent-dispatch-unavailable`.
+- If Task/subagent dispatch is unavailable (or returns "unsupported"/"unavailable"), stop and return `failed` with reason `subagent-dispatch-unavailable`.
 - Do not silently fall back to sequential, in-parent execution.
+- Do not continue with any review skill execution after a subagent-dispatch failure.
 
 ## Workflow
 
@@ -82,6 +89,7 @@ Forbidden in this skill:
      - `work_tree`
 
 2. Dispatch 5 review skills in parallel subagents
+   - Fail fast if Task/subagent dispatch capability is not present.
    - Use one subagent per review skill.
    - Dispatch these 5 subagents at the same time (single parallel batch).
    - Every subagent must inherit the same permissions as the parent agent:
@@ -143,6 +151,7 @@ Forbidden in this skill:
 
 - If prepare fails: stop pipeline and return `failed`.
 - If subagent dispatch is unavailable in step 2: stop pipeline and return `failed` with reason `subagent-dispatch-unavailable`.
+- If subagent dispatch is unavailable, do not run any reviewer inline as fallback.
 - If one or more review subagents fail:
   - skip merge step
   - run cleanup
