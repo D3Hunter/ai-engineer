@@ -285,11 +285,13 @@ def build_summary(findings: list[dict[str, Any]], inline_count: int, summary_onl
         "",
     ]
 
-    lines.append("### Findings (highest risk first)")
+    lines.append("<details>")
+    lines.append("<summary>Findings (highest risk first)</summary>")
     lines.append("")
 
     if not findings:
         lines.append("No findings.")
+        lines.append("")
     else:
         grouped_findings: dict[str, list[dict[str, Any]]] = {severity: [] for severity in SEVERITY_ORDER}
         for finding in findings:
@@ -310,6 +312,9 @@ def build_summary(findings: list[dict[str, Any]], inline_count: int, summary_onl
                 scope_suffix = f" (`{scope}`)" if scope else ""
                 lines.append(f"{idx}. {title}{scope_suffix}")
             lines.append("")
+
+    lines.append("</details>")
+    lines.append("")
 
     if summary_only:
         lines.extend(["### Unanchored findings", ""])
