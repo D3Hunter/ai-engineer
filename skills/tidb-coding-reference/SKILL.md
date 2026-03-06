@@ -87,6 +87,21 @@ Do not implement until these are explicit.
    - Keep shared storage files centered on common manager primitives.
    - This improves maintainability and reduces cognitive load during future reviews.
 
+10. **Avoid abbreviation-heavy names in SQL mapping and helpers**
+   - Prefer explicit aliases and local names (`column_count`, `distsql_scan_concurrency`, `durationSeconds`) over shortened forms (`col_cnt`, `distsql_con`, `dur`).
+   - Even when mapping by index, SQL aliases should remain readable for future maintenance and review.
+   - Helper parameter names should encode domain intent (`totalBytes`, `taskConcurrency`) rather than generic placeholders.
+
+11. **Document non-obvious contract and schema semantics close to code**
+   - For API-facing display fields, document output format expectations (for example Go `time.Duration` strings and binary size units).
+   - When storage schema names are unintuitive (for example a `task_key` column storing numeric task ID), leave a concise note near the query.
+   - Keep comments intent-focused and close to enforcement/use sites to reduce misreads.
+
+12. **Filter unset timestamp rows when computing duration-based metrics**
+   - In DXF history tables, `start_time`/`state_update_time` can be unset (`0` or `NULL`) for placeholders or incomplete subtasks.
+   - Duration aggregation SQL must filter to valid timestamps (for example `start_time > 0 and state_update_time > 0`) before `min/max` or `TIMESTAMPDIFF`.
+   - Otherwise totals and per-step durations can be inflated and derived speed fields become misleading.
+
 ## Recommended Workflow
 
 1. **Locate ownership quickly**
@@ -140,6 +155,7 @@ When tests are not run, report:
 - Accidentally changing data scope (history-only -> broader query).
 - Adding tests only at one layer (missing storage or integration coverage).
 - Ignoring existing feature patterns and introducing one-off conventions.
+- Aggregating duration across history subtasks without filtering unset timestamp rows (`0`/`NULL`), which can silently skew API metrics.
 
 ## Completion Checklist
 
@@ -153,4 +169,7 @@ When tests are not run, report:
 - [ ] Final summary includes correctness reasoning (if tests were not executed)
 - [ ] SQL is retrieval-oriented and formatting is handled in Go
 - [ ] Feature-specific methods are placed in focused files instead of generic aggregating files
+- [ ] SQL aliases and helper names avoid unclear abbreviations
+- [ ] Non-obvious schema semantics and API output formats are documented near implementation
+- [ ] Duration aggregation SQL excludes unset timestamp rows before `TIMESTAMPDIFF`/`min`/`max`
 
