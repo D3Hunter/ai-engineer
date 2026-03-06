@@ -1,9 +1,9 @@
 ---
-name: implement-tidb-backend-change
-description: Use when implementing backend changes in pingcap/tidb that span storage SQL, service/handler logic, runtime visibility guards, and test design.
+name: tidb-coding-reference
+description: Primary reference skill for coding in pingcap/tidb, including storage SQL, service/handler logic, runtime visibility guards, and test design.
 ---
 
-# Implement TiDB Backend Change
+# TiDB Coding Reference
 
 ## Purpose
 
@@ -72,6 +72,21 @@ Do not implement until these are explicit.
 6. **Use internal execution context when required**
    - Internal SQL/data calls should carry internal source context where expected by TiDB patterns.
 
+7. **Keep SQL retrieval-oriented; move presentation math to Go**
+   - SQL should prefer returning raw values (`bytes`, `seconds`, counts), not formatted strings.
+   - Avoid SQL-side display transforms such as `SEC_TO_TIME` and chained unit divisions for API presentation.
+   - Compute display fields in Go so formatting can evolve without rewriting SQL.
+
+8. **Format runtime-facing values in Go with standard helpers**
+   - For durations, convert raw seconds to `time.Duration` and use Go string formatting.
+   - For byte size display, use `github.com/docker/go-units` (for example `units.BytesSize`) instead of ad-hoc `GiB` string logic.
+   - This keeps behavior readable for small values too (for example values below `1GiB` can render as `MiB`).
+
+9. **Separate feature-specific methods into focused files**
+   - If a method is strongly tied to one feature (for example DXF import-into history), move it out of generic task-table files.
+   - Keep shared storage files centered on common manager primitives.
+   - This improves maintainability and reduces cognitive load during future reviews.
+
 ## Recommended Workflow
 
 1. **Locate ownership quickly**
@@ -99,6 +114,7 @@ Do not implement until these are explicit.
    - `gofmt` touched files.
    - lint/diagnostics on changed files.
    - run tests if requested; otherwise provide correctness reasoning.
+   - if tests are intentionally skipped by instruction, include explicit reasoning for SQL semantics, null/zero guards, and output compatibility.
 
 ## Test Design Pattern (Reusable)
 
@@ -135,4 +151,6 @@ When tests are not run, report:
 - [ ] HTTP/integration tests added
 - [ ] Formatting and lint checks completed
 - [ ] Final summary includes correctness reasoning (if tests were not executed)
+- [ ] SQL is retrieval-oriented and formatting is handled in Go
+- [ ] Feature-specific methods are placed in focused files instead of generic aggregating files
 
