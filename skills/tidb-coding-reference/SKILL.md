@@ -1,6 +1,6 @@
 ---
 name: tidb-coding-reference
-description: Primary reference skill for coding in pingcap/tidb, including storage SQL, service/handler logic, runtime visibility guards, and test design.
+description: Primary reference skill for coding in pingcap/tidb, including storage SQL, service/handler logic, runtime visibility guards, test design, and companion naming/scope quality gates.
 ---
 
 # TiDB Coding Reference
@@ -8,6 +8,15 @@ description: Primary reference skill for coding in pingcap/tidb, including stora
 ## Purpose
 
 This skill is a reusable coding playbook based on implementation experience in `pingcap/tidb`.
+
+When this skill is referenced, treat the following companion rules as mandatory guidance for implementation quality:
+
+- [review-clarity-naming-comment-intent](../review-clarity-naming-comment-intent/SKILL.md)
+  - use behavior-signaling, domain-accurate names and avoid ambiguous shorthand
+  - keep comments focused on intent (`why`) and contract semantics for non-obvious behavior
+- [review-scope-structure-abstraction](../review-scope-structure-abstraction/SKILL.md)
+  - keep edits tightly scoped to the stated objective and avoid drive-by refactors
+  - preserve layer/package boundaries and introduce abstractions only when reuse is concrete
 
 Use it when a change affects behavior across layers, such as:
 
@@ -160,6 +169,7 @@ When tests are not run, report:
 ## Completion Checklist
 
 - [ ] Prompt constraints extracted (behavior/data/scope/privilege/layer/verification)
+- [ ] Companion rules consulted: `review-clarity-naming-comment-intent` and `review-scope-structure-abstraction`
 - [ ] Storage implementation complete with typed return
 - [ ] Handler implementation complete with validation and error mapping
 - [ ] Router visibility guard applied via runtime predicates
