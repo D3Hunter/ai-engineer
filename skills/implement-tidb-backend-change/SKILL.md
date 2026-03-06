@@ -1,0 +1,138 @@
+---
+name: implement-tidb-backend-change
+description: Use when implementing backend changes in pingcap/tidb that span storage SQL, service/handler logic, runtime visibility guards, and test design.
+---
+
+# Implement TiDB Backend Change
+
+## Purpose
+
+This skill is a reusable coding playbook based on implementation experience in `pingcap/tidb`.
+
+Use it when a change affects behavior across layers, such as:
+
+- SQL/data access in framework or storage packages
+- server/service/handler behavior
+- route/feature visibility by runtime predicates
+- compatibility constraints (nextgen/classic, keyspace, feature mode)
+- tests across storage and HTTP/integration surfaces
+
+## What To Extract From Prompt First
+
+Before coding, normalize the request into these six constraints:
+
+1. **Behavior contract**
+   - exact input/output shape
+   - required error messages and status behavior
+
+2. **Data contract**
+   - source-of-truth tables and boundaries (for example: active-only, history-only, or union)
+   - missing-data semantics
+
+3. **Runtime visibility policy**
+   - predicates that enable/disable functionality
+   - where endpoint or feature must not be exposed
+
+4. **Privilege and execution model**
+   - user privilege expectations
+   - whether internal execution context is required
+
+5. **Layer ownership**
+   - which package owns SQL execution
+   - which package owns transport/request parsing
+
+6. **Verification policy**
+   - whether to run tests or provide reasoning-only validation
+
+Do not implement until these are explicit.
+
+## TiDB Implementation Heuristics
+
+1. **Follow existing package boundaries**
+   - Keep SQL in storage/repository-style code.
+   - Keep handlers focused on validation, context, and serialization.
+
+2. **Use runtime predicates at registration point**
+   - Apply visibility guards where features/routes are wired.
+   - Do not rely on deep handler checks alone.
+
+3. **Preserve data semantics literally**
+   - If requirement says history-only, enforce history-only in SQL.
+   - Do not silently broaden scope in the first implementation.
+
+4. **Prefer typed structs over map-based payloads**
+   - Domain structs in storage layer.
+   - JSON structs in API response path.
+
+5. **Return meaningful lower-layer errors**
+   - Use typed/known errors in storage layer.
+   - Annotate with operational context (`id`, constrained source).
+   - Map to transport response in handler layer.
+
+6. **Use internal execution context when required**
+   - Internal SQL/data calls should carry internal source context where expected by TiDB patterns.
+
+## Recommended Workflow
+
+1. **Locate ownership quickly**
+   - Find analogous feature path first (storage -> handler -> router -> tests).
+
+2. **Implement storage change first**
+   - Add/extend method.
+   - Keep SQL and row mapping there.
+   - Return typed result + explicit not-found behavior.
+
+3. **Implement service/handler**
+   - Parse and validate params.
+   - Build context/timeout/internal source.
+   - Call storage method.
+   - Return JSON and mapped errors.
+
+4. **Wire visibility in router/server**
+   - Register route/feature under explicit runtime predicates.
+
+5. **Add tests in two layers**
+   - Storage test: SQL semantics, mapping, edge behavior.
+   - HTTP/integration test: route wiring, validation, status, response shape.
+
+6. **Quality pass**
+   - `gofmt` touched files.
+   - lint/diagnostics on changed files.
+   - run tests if requested; otherwise provide correctness reasoning.
+
+## Test Design Pattern (Reusable)
+
+Always cover:
+
+1. invalid method and invalid parameter paths
+2. constrained-source not-found behavior
+3. happy path with deterministic seeded fixtures
+4. critical field mapping assertions
+5. storage semantics independently from HTTP behavior
+
+When tests are not run, report:
+
+- which tests were added
+- why those tests prove requirements
+- residual risk (if any)
+
+## Common TiDB Pitfalls
+
+- Mixing transport logic and SQL in the same layer.
+- Registering endpoint without runtime visibility guard.
+- Replacing precise not-found semantics with generic errors.
+- Accidentally changing data scope (history-only -> broader query).
+- Adding tests only at one layer (missing storage or integration coverage).
+- Ignoring existing feature patterns and introducing one-off conventions.
+
+## Completion Checklist
+
+- [ ] Prompt constraints extracted (behavior/data/scope/privilege/layer/verification)
+- [ ] Storage implementation complete with typed return
+- [ ] Handler implementation complete with validation and error mapping
+- [ ] Router visibility guard applied via runtime predicates
+- [ ] Storage tests added
+- [ ] HTTP/integration tests added
+- [ ] Formatting and lint checks completed
+- [ ] Final summary includes correctness reasoning (if tests were not executed)
+
