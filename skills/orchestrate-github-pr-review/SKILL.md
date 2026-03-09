@@ -69,11 +69,12 @@ Forbidden in this skill:
 ## Subagent Execution Hard Gate
 
 - For step 2, invoke `dispatching-parallel-agents` by workflow intent (parallel, independent tasks).
-- Before launching reviewer tasks, validate that Task/subagent dispatch is available in the current runtime.
-- Step 2 MUST use the Task/subagent mechanism.
-- The parent agent MUST NOT run any of the 5 review skills inline.
+- Step 2 MUST use a subagent mechanism. The parent agent MUST NOT run any of the 5 review skills inline.
 - Dispatch all 5 review subagents in one batch so they run concurrently.
-- If Task/subagent dispatch is unavailable (or returns "unsupported"/"unavailable"), stop and return `failed` with reason `subagent-dispatch-unavailable`.
+- Allowed subagent backends (in priority order):
+  - Native runtime Task/subagent API.
+  - `codex exec` child-agent processes (one process per reviewer) when native Task/subagent API is unavailable.
+- If neither native Task/subagent dispatch nor `codex exec` is available, stop and return `failed` with reason `subagent-dispatch-unavailable`.
 - Do not silently fall back to sequential, in-parent execution.
 - Do not continue with any review skill execution after a subagent-dispatch failure.
 
@@ -89,7 +90,10 @@ Forbidden in this skill:
      - `work_tree`
 
 2. Dispatch 5 review skills in parallel subagents
-   - Fail fast if Task/subagent dispatch capability is not present.
+   - Detect one dispatch backend:
+     - preferred: native Task/subagent API
+     - fallback: `codex exec` child-agent processes
+   - Fail fast only if neither backend is available.
    - Use one subagent per review skill.
    - Dispatch these 5 subagents at the same time (single parallel batch).
    - Every subagent must launch with explicit write-capable filesystem access:
@@ -102,13 +106,37 @@ Forbidden in this skill:
      - "Write output JSON to exactly `output_filename`."
      - "Run this subagent with `workspace-write` sandbox access."
      - "Do not run in parent; execute in this subagent only."
-   - Example dispatch shape (conceptual; use your runtime's Task/subagent API):
+   - Example dispatch shape using native Task/subagent API (conceptual):
      ```text
      Task("Invoke skill review-clarity-naming-comment-intent with code_path=<...> diff_filename=<...> output_filename=review-clarity-naming-comment-intent.json. Execute in this subagent only.", sandbox_mode="workspace-write")
      Task("Invoke skill review-correctness with code_path=<...> diff_filename=<...> output_filename=review-correctness.json. Execute in this subagent only.", sandbox_mode="workspace-write")
      Task("Invoke skill review-runtime-reliability-performance with code_path=<...> diff_filename=<...> output_filename=review-runtime-reliability-performance.json. Execute in this subagent only.", sandbox_mode="workspace-write")
      Task("Invoke skill review-scope-structure-abstraction with code_path=<...> diff_filename=<...> output_filename=review-scope-structure-abstraction.json. Execute in this subagent only.", sandbox_mode="workspace-write")
      Task("Invoke skill review-upgrade-compatibility-and-test-determinism with code_path=<...> diff_filename=<...> output_filename=review-upgrade-compatibility-and-test-determinism.json. Execute in this subagent only.", sandbox_mode="workspace-write")
+     ```
+   - Example dispatch shape using `codex exec` fallback (conceptual):
+     ```bash
+     codex exec --sandbox workspace-write -C "<code_path>" \
+       "Invoke skill review-clarity-naming-comment-intent directly. Inputs: code_path=<code_path>, diff_filename=<diff_filename>, output_filename=review-clarity-naming-comment-intent.json. Write output JSON to exactly output_filename. Run this subagent with workspace-write sandbox access. Do not run in parent; execute in this subagent only." \
+       > review-clarity-naming-comment-intent.log 2>&1 &
+
+     codex exec --sandbox workspace-write -C "<code_path>" \
+       "Invoke skill review-correctness directly. Inputs: code_path=<code_path>, diff_filename=<diff_filename>, output_filename=review-correctness.json. Write output JSON to exactly output_filename. Run this subagent with workspace-write sandbox access. Do not run in parent; execute in this subagent only." \
+       > review-correctness.log 2>&1 &
+
+     codex exec --sandbox workspace-write -C "<code_path>" \
+       "Invoke skill review-runtime-reliability-performance directly. Inputs: code_path=<code_path>, diff_filename=<diff_filename>, output_filename=review-runtime-reliability-performance.json. Write output JSON to exactly output_filename. Run this subagent with workspace-write sandbox access. Do not run in parent; execute in this subagent only." \
+       > review-runtime-reliability-performance.log 2>&1 &
+
+     codex exec --sandbox workspace-write -C "<code_path>" \
+       "Invoke skill review-scope-structure-abstraction directly. Inputs: code_path=<code_path>, diff_filename=<diff_filename>, output_filename=review-scope-structure-abstraction.json. Write output JSON to exactly output_filename. Run this subagent with workspace-write sandbox access. Do not run in parent; execute in this subagent only." \
+       > review-scope-structure-abstraction.log 2>&1 &
+
+     codex exec --sandbox workspace-write -C "<code_path>" \
+       "Invoke skill review-upgrade-compatibility-and-test-determinism directly. Inputs: code_path=<code_path>, diff_filename=<diff_filename>, output_filename=review-upgrade-compatibility-and-test-determinism.json. Write output JSON to exactly output_filename. Run this subagent with workspace-write sandbox access. Do not run in parent; execute in this subagent only." \
+       > review-upgrade-compatibility-and-test-determinism.log 2>&1 &
+
+     wait
      ```
    - Start all five tasks before awaiting any single one.
    - Use fixed output filenames:
@@ -151,8 +179,9 @@ Forbidden in this skill:
 ## Failure Handling
 
 - If prepare fails: stop pipeline and return `failed`.
-- If subagent dispatch is unavailable in step 2: stop pipeline and return `failed` with reason `subagent-dispatch-unavailable`.
-- If subagent dispatch is unavailable, do not run any reviewer inline as fallback.
+- If neither native Task/subagent dispatch nor `codex exec` is available in step 2: stop pipeline and return `failed` with reason `subagent-dispatch-unavailable`.
+- If one or more `codex exec` subagents fail to start or exit non-zero, treat as reviewer-subagent failure.
+- Do not run any reviewer inline in the parent as fallback.
 - If one or more review subagents fail:
   - skip merge step
   - run cleanup
