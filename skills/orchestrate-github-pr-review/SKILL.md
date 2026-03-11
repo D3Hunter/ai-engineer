@@ -71,6 +71,8 @@ Forbidden in this skill:
 - For step 2, invoke `dispatching-parallel-agents` by workflow intent (parallel, independent tasks).
 - Step 2 MUST use a subagent mechanism. The parent agent MUST NOT run any of the 5 review skills inline.
 - Dispatch all 5 review subagents in one batch so they run concurrently.
+- Do NOT terminate review subagents just because they are slow. These review skills have no checkpoint/resume, so early termination discards completed in-memory work.
+- Terminate a review subagent only when there is an obvious hang signal (for example: runtime marks the task as stuck/disconnected/crashed, or repeated long-interval health checks show zero state/output changes).
 - Allowed subagent backends (in priority order):
   - Native runtime Task/subagent API.
   - `codex exec` child-agent processes (one process per reviewer) when native Task/subagent API is unavailable.
@@ -139,6 +141,10 @@ Forbidden in this skill:
      wait
      ```
    - Start all five tasks before awaiting any single one.
+   - Monitor all five tasks in a polling loop; do not block forever on only one task while ignoring the others.
+   - Slow progress is not a hang. Keep waiting while a task remains in a valid running state.
+   - Before force-terminating for hang, perform multiple long-interval checks (for example, at least 3 checks spaced at least 5 minutes apart). If any progress appears, reset the hang suspicion counter.
+   - If a task must be terminated for an obvious hang, record the explicit hang signal in failure details and preserve any output file that already exists.
    - Use fixed output filenames:
      - `review-clarity-naming-comment-intent.json`
      - `review-correctness.json`
@@ -183,9 +189,11 @@ Forbidden in this skill:
 - If one or more `codex exec` subagents fail to start or exit non-zero, treat as reviewer-subagent failure.
 - Do not run any reviewer inline in the parent as fallback.
 - If one or more review subagents fail:
+  - do not kill other in-flight review subagents unless they also show obvious hang signals
+  - continue waiting for all non-hung subagents to finish and collect any completed outputs
   - skip merge step
   - run cleanup
-  - return `partial-failure` with failure details
+  - return `partial-failure` with failure details (including any hang signals used to justify forced termination)
 - If merge fails:
   - run cleanup
   - return `partial-failure` with merge error and file outputs kept for retry
