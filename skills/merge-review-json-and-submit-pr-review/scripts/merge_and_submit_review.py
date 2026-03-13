@@ -275,8 +275,6 @@ def format_finding_markdown(finding: dict[str, Any], fallback_scope: str = "") -
 
 def build_summary(findings: list[dict[str, Any]], inline_count: int, summary_only: list[dict[str, Any]]) -> str:
     lines: list[str] = [
-        "**AI-generated review based on @D3Hunter's standards; manual review will be performed after all comments are resolved.**",
-        "",
         "### Summary",
         "",
         f"- Total findings: {len(findings)}",

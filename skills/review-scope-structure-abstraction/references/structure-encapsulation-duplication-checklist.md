@@ -9,6 +9,7 @@ Check:
 - readability: name extracted methods by behavior, not by mechanism
 - testability: create seams that reduce setup and isolate side effects
 - deduplication: if similar logic appears in 2+ places, prefer one focused helper
+- domain modeling: business/domain records avoid opaque positional containers unless true matrix semantics apply
 - avoid generic wrappers when direct APIs are clearer
 - avoid exported or global utilities for one-time local logic
 - avoid mixing unrelated behavior changes in a bugfix PR
@@ -44,6 +45,17 @@ Check:
 - a helper with one callsite stays local/private unless there is a strong reason
 - duplication removal does not over-generalize the domain model
 - interface extraction is driven by testability or multiple implementations, not style
+
+## Domain Data Modeling (Positional vs Named)
+
+- prefer structs/value objects with named fields for business/domain records
+- use multidimensional arrays/slices only when data is inherently matrix/grid/algorithmic
+- if positional storage remains, document dimension order once and expose named accessors/helpers
+- avoid raw magic index access across broad call paths; confine index arithmetic to boundary adapters
+- validate positional shape invariants at construction/decoding boundaries (rank, lengths, non-empty constraints)
+- if adding one domain attribute forces broad positional rewrites, refactor to a named type
+- recurring primitive tuples across 2+ callsites should be promoted to a named struct/value object
+- replace reorder-prone primitive/boolean argument packs with named parameter or options structs
 
 ## Control-Flow Complexity
 
