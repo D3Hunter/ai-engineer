@@ -37,6 +37,17 @@
 - Output schema and field meanings remain consistent with the contract.
 - Output ordering is deterministic where callers depend on it.
 
+## Positional Data and Shape Correctness
+
+- Dimension/index order is treated as an invariant and covered by tests.
+- Dynamic index access is bounds-safe across success, error, and retry paths.
+- Shape assumptions (rank, rectangular vs ragged, non-empty constraints) are validated before traversal.
+- Conversions between positional arrays and named structs preserve ordering and units explicitly.
+- Malformed positional payloads fail fast with stable, actionable errors.
+- Refactors that add/remove fields cannot silently shift positional meaning; migration is explicit and tested.
+- Repeated same-typed primitive arguments use typed wrappers or structs to prevent parameter-order bugs.
+- Edge-case tests cover first/last index, empty container, singleton container, and max-size boundaries.
+
 ## SQL Language and Type Semantics
 
 - SQL dialect behavior matches the documented contract.

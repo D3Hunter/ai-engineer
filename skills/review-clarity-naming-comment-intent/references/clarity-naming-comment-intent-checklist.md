@@ -123,6 +123,15 @@ Check:
 - Version/tech details leak into public contracts.
 - New names are introduced without old-term mapping.
 
+## 13) Positional Data Naming and Intent
+
+- For domain/business data, prefer named structs/objects over tuple or nested slice contracts at API boundaries.
+- If positional containers remain, dimension/order meaning is encoded in type names or constants, not tribal knowledge.
+- Raw index access (`[0]`, `[1]`, `[2]`) is confined to boundary adapters; callsites should read through named helpers/fields.
+- Parameter lists with same-typed primitives that are easy to misorder are replaced by named parameter structs/objects.
+- Boolean positional arguments are avoided when named options make polarity explicit.
+- Retained positional layouts include intent comments documenting order, units, and invariants near declaration.
+
 ## Comment and Documentation Intent Checklist
 
 ### 1) Comment Necessity and Signal Quality
