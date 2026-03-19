@@ -142,6 +142,30 @@ Notes:
 
 - `undefine` removes persistent config, so VM disappears from list.
 - If snapshots exist, I may need to remove snapshot metadata first.
+- `--remove-all-storage` is dangerous when ISO is attached as storage; detach ISO first or delete specific VM disks only.
+
+## Safe VM cleanup without deleting installer ISO
+
+If I attached installer ISO (for example `/var/lib/libvirt/boot/Rocky-9.5-x86_64-dvd.iso`), avoid blind `--remove-all-storage`.
+
+```bash
+VM="vm-demo-01"
+ISO="/var/lib/libvirt/boot/Rocky-9.5-x86_64-dvd.iso"
+
+# Inspect block targets first (disk vs cdrom)
+virsh domblklist "$VM" --details
+
+# Optional: detach ISO device before destructive cleanup
+CDROM_TGT="$(virsh domblklist "$VM" --details | awk -v iso="$ISO" 'NR>2 && $4==iso {print $3; exit}')"
+if [ -n "$CDROM_TGT" ]; then
+  virsh detach-disk "$VM" "$CDROM_TGT" --config
+fi
+
+virsh destroy "$VM" 2>/dev/null || true
+virsh undefine "$VM" --nvram
+```
+
+If I really need automated storage cleanup, prefer deleting specific targets with `--storage` instead of `--remove-all-storage`.
 
 ## Change CPU/memory of an existing VM
 
@@ -342,6 +366,36 @@ Important:
 virsh pool-dumpxml "$POOL" | grep -E '<path>|pool type'
 ```
 
+## Download Rocky ISO (multi-thread + retry + nohup)
+
+Use `aria2c` for resumable parallel download in background.
+
+```bash
+ISO_URL="https://dl.rockylinux.org/vault/rocky/9.5/isos/x86_64/Rocky-9.5-x86_64-dvd.iso"
+ISO_DIR="/var/lib/libvirt/boot"
+ISO_NAME="Rocky-9.5-x86_64-dvd.iso"
+LOG="/tmp/rocky95-iso-download.log"
+
+command -v aria2c >/dev/null || dnf -y install aria2
+mkdir -p "$ISO_DIR"
+
+nohup aria2c "$ISO_URL" \
+  -d "$ISO_DIR" -o "$ISO_NAME" \
+  -x 16 -s 16 -k 1M \
+  -c -m 0 --retry-wait=5 --timeout=30 \
+  --summary-interval=30 \
+  >"$LOG" 2>&1 &
+
+echo "PID=$! LOG=$LOG"
+tail -f "$LOG"
+```
+
+Quick verify:
+
+```bash
+ls -lh "${ISO_DIR}/${ISO_NAME}"
+```
+
 ## No `default` pool case
 
 A host may have no pool literally named `default`; pool names are just labels.
@@ -485,6 +539,13 @@ Remote client connects with:
 ssh -p 2222 <vm_user>@<host_ip_or_dns>
 ```
 
+Auth gotcha learned:
+
+- If forwarding is correct but SSH still fails with password, check guest auth policy first:
+  - `sshd -T | egrep 'permitrootlogin|passwordauthentication|kbdinteractiveauthentication|usepam'`
+  - `journalctl -u sshd -n 80 --no-pager`
+  - `faillock --user root --reset`
+
 ## Pin VM IP with libvirt DHCP reservation
 
 ```bash
@@ -506,6 +567,32 @@ virsh net-dhcp-leases "$NET" | grep -i "$MAC"
 ```
 
 If VM already has lease with old IP, renew DHCP in guest or reboot VM.
+
+## Session lessons learned (quick fixes)
+
+- Exit serial console back to host terminal with `Ctrl + ]`.
+- If `firewall-cmd` returns `FirewallD is not running`, start it first:
+
+```bash
+dnf -y install firewalld
+systemctl enable --now firewalld
+firewall-cmd --state
+```
+
+- Extract plain IPv4 from `virsh domifaddr` output:
+
+```bash
+VM_IP="$(virsh domifaddr "$VM" --source lease | awk 'NR>2 && $3=="ipv4" {sub(/\/.*/, "", $4); print $4; exit}')"
+echo "VM_IP=\"$VM_IP\""
+```
+
+- If heredoc write like `cat > "$KS" <<EOF` fails with `No such file or directory`, check `KS` first:
+
+```bash
+echo "KS=[$KS]"
+[ -n "$KS" ] || { echo "KS is empty"; exit 1; }
+mkdir -p "$(dirname "$KS")"
+```
 
 ## My troubleshooting flow
 
