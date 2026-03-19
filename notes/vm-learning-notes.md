@@ -73,7 +73,7 @@ services --enabled=sshd
 firewall --enabled --service=ssh
 ignoredisk --only-use=vda
 clearpart --all --initlabel --drives=vda
-autopart --type=lvm
+autopart --type=lvm --nohome
 reboot
 
 %packages
@@ -112,6 +112,16 @@ virsh autostart "$VM"
 # Detach ISO first so later --remove-all-storage will not delete installer ISO.
 CDROM_TGT="$(virsh domblklist "$VM" --details | awk -v iso="$ISO" 'NR>2 && $4==iso {print $3; exit}')"
 [ -n "$CDROM_TGT" ] && virsh detach-disk "$VM" "$CDROM_TGT" --config
+```
+
+## Expand `/` to use all free VG space (inside guest)
+
+If `df -h /` shows about `70G` after install, run:
+
+```bash
+ROOT_LV="$(findmnt -no SOURCE /)"
+lvextend -r -l +100%FREE "$ROOT_LV"
+df -h /
 ```
 
 ## Get VM IP and basic checks

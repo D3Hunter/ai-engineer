@@ -651,133 +651,41 @@ If VM already has lease with old IP, renew DHCP in guest or reboot VM.
 
 ## End-to-end script: create VM, pin IP, expose SSH, cleanup
 
-Copy/paste baseline for full lifecycle on libvirt NAT network.
+Use the reusable example script at `notes/scripts/vm-lifecycle.sh`.
 
 ```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-# memory is MiB, disk size is GiB
 VM="this-is-vm-name"
-POOL="disk1"
-NET="mycustomnet"
-ISO="/var/lib/libvirt/boot/Rocky-9.5-x86_64-dvd.iso"
-read -rsp "Root password for ${VM}: " ROOT_PASSWORD
-echo
-ROOT_HASH="$(openssl passwd -6 "$ROOT_PASSWORD")"
-unset ROOT_PASSWORD
-KS="/tmp/${VM}.ks"
 HOST_PORT=2111
-NET_ZONE="public"
 
-######################################################
-# install VM
-######################################################
-cat > "$KS" <<EOF
-text
-lang en_US.UTF-8
-keyboard us
-timezone Asia/Shanghai --isUtc
-network --bootproto=dhcp --device=link --activate
-rootpw --iscrypted $ROOT_HASH
-services --enabled=sshd
-firewall --enabled --service=ssh
-ignoredisk --only-use=vda
-clearpart --all --initlabel --drives=vda
-autopart --type=lvm
-reboot
+# Optional overrides (defaults shown)
+POOL="disk1" \
+NET="mycustomnet" \
+ISO="/var/lib/libvirt/boot/Rocky-9.5-x86_64-dvd.iso" \
+NET_ZONE="public" \
+./notes/scripts/vm-lifecycle.sh create "$VM" "$HOST_PORT"
 
-%packages
-@^minimal-environment
-%end
-
-%post
-mkdir -p /etc/ssh/sshd_config.d
-cat > /etc/ssh/sshd_config.d/99-root-password.conf <<'EOT'
-PermitRootLogin yes
-PasswordAuthentication yes
-KbdInteractiveAuthentication yes
-UsePAM yes
-EOT
-systemctl enable sshd
-%end
-EOF
-
-virt-install \
-  --name "$VM" \
-  --vcpus 16 \
-  --memory 65536 \
-  --disk pool="$POOL",size=500,device=disk,bus=virtio,format=qcow2,target=vda \
-  --location "$ISO",kernel=images/pxeboot/vmlinuz,initrd=images/pxeboot/initrd.img \
-  --initrd-inject "$KS" \
-  --network network="$NET",model=virtio \
-  --graphics none \
-  --console pty,target_type=serial \
-  --os-variant rocky9 \
-  --noautoconsole \
-  --wait -1 \
-  --extra-args "inst.text inst.cmdline console=ttyS0,115200n8 inst.repo=cdrom inst.ks=file:/$(basename "$KS")"
-
-virsh start "$VM"
-virsh autostart "$VM"
-
-# Detach ISO first, so --remove-all-storage won't remove installer ISO.
-CDROM_TGT="$(virsh domblklist "$VM" --details | awk -v iso="$ISO" 'NR>2 && $4==iso {print $3; exit}')"
-[ -n "$CDROM_TGT" ] && virsh detach-disk "$VM" "$CDROM_TGT" --config
-
-######################################################
-# Pin VM IP (fixed DHCP reservation in libvirt)
-######################################################
-VM_IP="$(virsh domifaddr "$VM" --source lease | awk 'NR>2 && $3=="ipv4" {sub(/\/.*/, "", $4); print $4; exit}')"
-echo "VM_IP=\"$VM_IP\""
-MAC="$(virsh domiflist "$VM" | awk -v net="$NET" 'NR>2 && $2=="network" && $3==net {print $5; exit}')"
-echo "MAC=\"$MAC\""
-virsh net-update "$NET" add-last ip-dhcp-host "<host mac='$MAC' name='$VM' ip='$VM_IP'/>" --live --config
-virsh net-dumpxml "$NET" --inactive | sed -n '/<dhcp>/,/<\/dhcp>/p'
-virsh net-dhcp-leases "$NET" | grep -i "$MAC"
-
-# Reboot VM so it picks the reserved IP.
-virsh reboot "$VM"
-
-######################################################
-# Expose VM SSH (22) to host port
-######################################################
-dnf -y install firewalld
-systemctl enable --now firewalld
-firewall-cmd --state
-
-firewall-cmd --zone="$NET_ZONE" --permanent --add-masquerade
-firewall-cmd --zone="$NET_ZONE" --permanent --add-forward-port=port="$HOST_PORT":proto=tcp:toaddr="$VM_IP":toport=22
-firewall-cmd --zone="$NET_ZONE" --permanent --add-port="$HOST_PORT"/tcp
-firewall-cmd --reload
-
-######################################################
-# cleanup VM and networking rules
-######################################################
-virsh destroy "$VM" 2>/dev/null || true
-virsh undefine "$VM" --remove-all-storage --nvram
-
-# Check current host forwarding rules.
-firewall-cmd --zone="$NET_ZONE" --list-forward-ports
-firewall-cmd --zone="$NET_ZONE" --list-ports
-
-# Remove forward + opened host port.
-firewall-cmd --zone="$NET_ZONE" --permanent --remove-forward-port=port="$HOST_PORT":proto=tcp:toaddr="$VM_IP":toport=22
-firewall-cmd --zone="$NET_ZONE" --permanent --remove-port="$HOST_PORT"/tcp
-firewall-cmd --reload
-
-# Verify removed.
-firewall-cmd --zone="$NET_ZONE" --list-forward-ports
-
-# Remove fixed DHCP reservation.
-virsh net-update "$NET" delete ip-dhcp-host "<host mac='$MAC' name='$VM' ip='$VM_IP'/>" --live --config
+# Later, cleanup VM + DHCP reservation + forwarded port
+./notes/scripts/vm-lifecycle.sh cleanup "$VM" "$HOST_PORT"
 ```
+
+What `create` does:
+
+- Installs a Rocky VM with kickstart (`autopart --type=lvm --nohome`).
+- Detects current DHCP lease IP and pins it in libvirt as a DHCP reservation.
+- Exposes guest SSH (`22/tcp`) to the host port you pass.
+- Saves lifecycle state to `/tmp/${VM}.vm-lifecycle.state` for cleanup.
+
+What `cleanup` does:
+
+- Destroys and undefines the VM (including VM storage).
+- Removes the host firewall forward rule and opened host port.
+- Removes the DHCP reservation for that VM from libvirt network.
 
 Notes:
 
-- `virsh start "$VM"` after `virt-install --wait -1` may report already-running; this is harmless in most flows.
-- If `VM_IP` is empty, wait for DHCP lease (`virsh net-dhcp-leases "$NET"`) before adding reservation or forward rules.
-- This script enables root password SSH login for bootstrap convenience; harden later (SSH keys, disable root password login) for non-lab use.
+- Script arguments are fixed: `<create|cleanup> <vm_name> <host_port>`.
+- `create` prompts for root password unless `ROOT_PASSWORD` env var is set.
+- This flow enables root password SSH login for bootstrap convenience; harden later for non-lab use.
 
 ## Quick fixes
 
@@ -803,6 +711,14 @@ echo "VM_IP=\"$VM_IP\""
 echo "KS=[$KS]"
 [ -n "$KS" ] || { echo "KS is empty"; exit 1; }
 mkdir -p "$(dirname "$KS")"
+```
+
+- If guest `/` is around `70G` after `autopart --type=lvm --nohome`, use all free VG space:
+
+```bash
+ROOT_LV="$(findmnt -no SOURCE /)"
+lvextend -r -l +100%FREE "$ROOT_LV"
+df -h /
 ```
 
 ## Troubleshooting checklist
