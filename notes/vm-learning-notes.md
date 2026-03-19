@@ -379,6 +379,134 @@ ls /mnt/vm
 sudo guestunmount /mnt/vm
 ```
 
+## Headless install playbook (terminal-only host)
+
+If host has no GUI, avoid VNC-first workflow and install through serial text mode.
+
+```bash
+VM="vm-demo-01"
+NET="mycustomnet"
+ISO="/var/lib/libvirt/boot/Rocky-9.5-x86_64-dvd.iso"
+
+test -f "$ISO"
+
+virt-install \
+  --name "$VM" \
+  --vcpus 8 \
+  --memory 16384 \
+  --disk path="/var/lib/libvirt/images/${VM}.qcow2",size=200,device=disk,bus=virtio,format=qcow2 \
+  --location "$ISO",kernel=images/pxeboot/vmlinuz,initrd=images/pxeboot/initrd.img \
+  --network network="$NET",model=virtio \
+  --graphics none \
+  --console pty,target_type=serial \
+  --extra-args "inst.text inst.cmdline console=tty0 console=ttyS0,115200n8" \
+  --os-variant rocky9
+```
+
+Notes:
+
+- If `--disk path=...` points to a non-existent file, include `size=...` so `virt-install` can create it.
+- `--location` is preferred for serial/text installer boot args; `--cdrom` does not accept `--extra-args`.
+- For non-blocking launch, add `--noautoconsole --wait 0` and attach later with `virsh console "$VM"`.
+
+## Progress and completion checks (no GUI required)
+
+```bash
+VM="vm-demo-01"
+NET="mycustomnet"
+
+virsh domstate "$VM"
+tail -f "/var/log/libvirt/qemu/${VM}.log"
+virsh domiflist "$VM"
+
+# Correct MAC extraction: Type is column 2, Source is column 3
+MAC="$(virsh domiflist "$VM" | awk -v net="$NET" 'NR>2 && $2=="network" && $3==net {print $5; exit}')"
+virsh net-dhcp-leases "$NET" | grep -i "$MAC" || echo "No DHCP lease for $VM"
+```
+
+Interpretation:
+
+- `No DHCP lease` means guest has not requested DHCP yet (guest NIC down, installer not finished, or wrong network inside guest).
+- `ssh: connect to host <ip> port 22: Connection refused` means network path is okay, but guest `sshd` is not listening yet.
+
+## Serial console and VNC port mapping
+
+Serial console:
+
+```bash
+VM="vm-demo-01"
+virsh console "$VM"
+```
+
+- Exit with `Ctrl + ]`.
+- If console is connected but blank, guest may not be outputting to `ttyS0` (check kernel args/grub config in guest).
+
+VNC mapping (when needed):
+
+```bash
+VM="vm-demo-01"
+virsh vncdisplay "$VM"
+```
+
+- Display `:1` means TCP port `5901` (`5900 + 1`).
+- If VNC listens on `127.0.0.1`, tunnel from another machine:
+
+```bash
+ssh -L 5901:127.0.0.1:5901 root@<host>
+```
+
+Then open VNC client to `127.0.0.1:5901` on local machine.
+
+## SSH reachability on libvirt NAT network
+
+Inside host:
+
+```bash
+ssh <vm_user>@<vm_ip>
+```
+
+From another machine, forward host port to guest `22` (example `2222 -> VM:22`):
+
+```bash
+NET_ZONE="public"
+VM_IP="192.168.120.10"
+HOST_PORT=2222
+
+firewall-cmd --zone="$NET_ZONE" --permanent --add-masquerade
+firewall-cmd --zone="$NET_ZONE" --permanent \
+  --add-forward-port=port="$HOST_PORT":proto=tcp:toaddr="$VM_IP":toport=22
+firewall-cmd --zone="$NET_ZONE" --permanent --add-port="$HOST_PORT"/tcp
+firewall-cmd --reload
+```
+
+Remote client connects with:
+
+```bash
+ssh -p 2222 <vm_user>@<host_ip_or_dns>
+```
+
+## Pin VM IP with libvirt DHCP reservation
+
+```bash
+VM="vm-demo-01"
+NET="mycustomnet"
+VM_IP="192.168.120.10"
+
+MAC="$(virsh domiflist "$VM" | awk -v net="$NET" 'NR>2 && $2=="network" && $3==net {print $5; exit}')"
+virsh net-update "$NET" add-last ip-dhcp-host \
+  "<host mac='$MAC' name='$VM' ip='$VM_IP'/>" \
+  --live --config
+```
+
+Verify:
+
+```bash
+virsh net-dumpxml "$NET" --inactive | sed -n '/<dhcp>/,/<\/dhcp>/p'
+virsh net-dhcp-leases "$NET" | grep -i "$MAC"
+```
+
+If VM already has lease with old IP, renew DHCP in guest or reboot VM.
+
 ## My troubleshooting flow
 
 1. Check VM/domain object (`virsh dominfo "$VM"`).
