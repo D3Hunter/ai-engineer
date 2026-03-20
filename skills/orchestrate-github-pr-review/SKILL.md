@@ -11,7 +11,7 @@ Run a full PR review pipeline by orchestrating existing skills directly.
 
 This skill must:
 - prepare PR diff worktree metadata
-- run 5 review skills in parallel subagents
+- run 6 review skills in parallel subagents
 - merge and submit one PR review
 - clean up the temporary worktree
 
@@ -54,7 +54,8 @@ Emit one JSON object summarizing orchestration status:
 Required: invoke these skills directly by name:
 - [prepare-pr-diff-worktree](../prepare-pr-diff-worktree/SKILL.md)
 - [review-clarity-naming-comment-intent](../review-clarity-naming-comment-intent/SKILL.md)
-- [review-correctness](../review-correctness/SKILL.md)
+- [review-correctness-query-planner-execution](../review-correctness-query-planner-execution/SKILL.md)
+- [review-correctness-state-schema-transaction](../review-correctness-state-schema-transaction/SKILL.md)
 - [review-runtime-reliability-performance](../review-runtime-reliability-performance/SKILL.md)
 - [review-scope-structure-abstraction](../review-scope-structure-abstraction/SKILL.md)
 - [review-upgrade-compatibility-and-test-determinism](../review-upgrade-compatibility-and-test-determinism/SKILL.md)
@@ -69,8 +70,8 @@ Forbidden in this skill:
 ## Subagent Execution Hard Gate
 
 - For step 2, invoke `dispatching-parallel-agents` by workflow intent (parallel, independent tasks).
-- Step 2 MUST use a subagent mechanism. The parent agent MUST NOT run any of the 5 review skills inline.
-- Dispatch all 5 review subagents in one batch so they run concurrently.
+- Step 2 MUST use a subagent mechanism. The parent agent MUST NOT run any of the 6 review skills inline.
+- Dispatch all 6 review subagents in one batch so they run concurrently.
 - Do NOT terminate review subagents just because they are slow. These review skills have no checkpoint/resume, so early termination discards completed in-memory work.
 - Terminate a review subagent only when there is an obvious hang signal (for example: runtime marks the task as stuck/disconnected/crashed, or repeated long-interval health checks show zero state/output changes).
 - Allowed subagent backends (in priority order):
@@ -91,13 +92,13 @@ Forbidden in this skill:
      - `diff_filename`
      - `work_tree`
 
-2. Dispatch 5 review skills in parallel subagents
+2. Dispatch 6 review skills in parallel subagents
    - Detect one dispatch backend:
      - preferred: native Task/subagent API
      - fallback: `codex exec` child-agent processes
    - Fail fast only if neither backend is available.
    - Use one subagent per review skill.
-   - Dispatch these 5 subagents at the same time (single parallel batch).
+   - Dispatch these 6 subagents at the same time (single parallel batch).
    - Every subagent must launch with explicit write-capable filesystem access:
      - set subagent sandbox mode to `workspace-write` (never `read-only`)
      - keep the same network restrictions as the parent agent
@@ -111,7 +112,8 @@ Forbidden in this skill:
    - Example dispatch shape using native Task/subagent API (conceptual):
      ```text
      Task("Invoke skill review-clarity-naming-comment-intent with code_path=<...> diff_filename=<...> output_filename=review-clarity-naming-comment-intent.json. Execute in this subagent only.", sandbox_mode="workspace-write")
-     Task("Invoke skill review-correctness with code_path=<...> diff_filename=<...> output_filename=review-correctness.json. Execute in this subagent only.", sandbox_mode="workspace-write")
+     Task("Invoke skill review-correctness-query-planner-execution with code_path=<...> diff_filename=<...> output_filename=review-correctness-query-planner-execution.json. Execute in this subagent only.", sandbox_mode="workspace-write")
+     Task("Invoke skill review-correctness-state-schema-transaction with code_path=<...> diff_filename=<...> output_filename=review-correctness-state-schema-transaction.json. Execute in this subagent only.", sandbox_mode="workspace-write")
      Task("Invoke skill review-runtime-reliability-performance with code_path=<...> diff_filename=<...> output_filename=review-runtime-reliability-performance.json. Execute in this subagent only.", sandbox_mode="workspace-write")
      Task("Invoke skill review-scope-structure-abstraction with code_path=<...> diff_filename=<...> output_filename=review-scope-structure-abstraction.json. Execute in this subagent only.", sandbox_mode="workspace-write")
      Task("Invoke skill review-upgrade-compatibility-and-test-determinism with code_path=<...> diff_filename=<...> output_filename=review-upgrade-compatibility-and-test-determinism.json. Execute in this subagent only.", sandbox_mode="workspace-write")
@@ -123,8 +125,12 @@ Forbidden in this skill:
        > review-clarity-naming-comment-intent.log 2>&1 &
 
      codex exec --sandbox workspace-write -C "<code_path>" \
-       "Invoke skill review-correctness directly. Inputs: code_path=<code_path>, diff_filename=<diff_filename>, output_filename=review-correctness.json. Write output JSON to exactly output_filename. Run this subagent with workspace-write sandbox access. Do not run in parent; execute in this subagent only." \
-       > review-correctness.log 2>&1 &
+       "Invoke skill review-correctness-query-planner-execution directly. Inputs: code_path=<code_path>, diff_filename=<diff_filename>, output_filename=review-correctness-query-planner-execution.json. Write output JSON to exactly output_filename. Run this subagent with workspace-write sandbox access. Do not run in parent; execute in this subagent only." \
+       > review-correctness-query-planner-execution.log 2>&1 &
+
+     codex exec --sandbox workspace-write -C "<code_path>" \
+       "Invoke skill review-correctness-state-schema-transaction directly. Inputs: code_path=<code_path>, diff_filename=<diff_filename>, output_filename=review-correctness-state-schema-transaction.json. Write output JSON to exactly output_filename. Run this subagent with workspace-write sandbox access. Do not run in parent; execute in this subagent only." \
+       > review-correctness-state-schema-transaction.log 2>&1 &
 
      codex exec --sandbox workspace-write -C "<code_path>" \
        "Invoke skill review-runtime-reliability-performance directly. Inputs: code_path=<code_path>, diff_filename=<diff_filename>, output_filename=review-runtime-reliability-performance.json. Write output JSON to exactly output_filename. Run this subagent with workspace-write sandbox access. Do not run in parent; execute in this subagent only." \
@@ -140,20 +146,22 @@ Forbidden in this skill:
 
      wait
      ```
-   - Start all five tasks before awaiting any single one.
-   - Monitor all five tasks in a polling loop; do not block forever on only one task while ignoring the others.
+   - Start all six tasks before awaiting any single one.
+   - Monitor all six tasks in a polling loop; do not block forever on only one task while ignoring the others.
    - Slow progress is not a hang. Keep waiting while a task remains in a valid running state.
    - Before force-terminating for hang, perform multiple long-interval checks (for example, at least 3 checks spaced at least 5 minutes apart). If any progress appears, reset the hang suspicion counter.
    - If a task must be terminated for an obvious hang, record the explicit hang signal in failure details and preserve any output file that already exists.
    - Use fixed output filenames:
      - `review-clarity-naming-comment-intent.json`
-     - `review-correctness.json`
+     - `review-correctness-query-planner-execution.json`
+     - `review-correctness-state-schema-transaction.json`
      - `review-runtime-reliability-performance.json`
      - `review-scope-structure-abstraction.json`
      - `review-upgrade-compatibility-and-test-determinism.json`
    - Reviewer invocation map:
      - [review-clarity-naming-comment-intent](../review-clarity-naming-comment-intent/SKILL.md) -> `review-clarity-naming-comment-intent.json`
-     - [review-correctness](../review-correctness/SKILL.md) -> `review-correctness.json`
+     - [review-correctness-query-planner-execution](../review-correctness-query-planner-execution/SKILL.md) -> `review-correctness-query-planner-execution.json`
+     - [review-correctness-state-schema-transaction](../review-correctness-state-schema-transaction/SKILL.md) -> `review-correctness-state-schema-transaction.json`
      - [review-runtime-reliability-performance](../review-runtime-reliability-performance/SKILL.md) -> `review-runtime-reliability-performance.json`
      - [review-scope-structure-abstraction](../review-scope-structure-abstraction/SKILL.md) -> `review-scope-structure-abstraction.json`
      - [review-upgrade-compatibility-and-test-determinism](../review-upgrade-compatibility-and-test-determinism/SKILL.md) -> `review-upgrade-compatibility-and-test-determinism.json`
@@ -162,7 +170,7 @@ Forbidden in this skill:
    - After all subagents finish, invoke [merge-review-json-and-submit-pr-review](../merge-review-json-and-submit-pr-review/SKILL.md).
    - Pass:
      - `pr_link`
-     - `input_files` = all 5 review JSON files from step 2
+     - `input_files` = all 6 review JSON files from step 2
    - Optional outputs:
      - `merged_output` = `merged-review-output.json`
      - `payload_output` = `github-review-payload.json`
@@ -203,5 +211,5 @@ Forbidden in this skill:
 ## Determinism Requirements
 
 - Do not rename review output filenames.
-- Do not drop any of the 5 category review skills.
+- Do not drop any of the 6 category review skills.
 - Do not reorder severity handling logic inside downstream skills.

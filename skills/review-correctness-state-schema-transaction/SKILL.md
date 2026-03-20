@@ -1,14 +1,14 @@
 ---
-name: review-correctness
-description: Use when reviewing pull requests for functional correctness, invariant preservation, state integrity, concurrency safety, and regression risk before merge.
+name: review-correctness-state-schema-transaction
+description: Use when reviewing pull requests for state integrity, schema/DDL/index correctness, transaction semantics, and state-preservation regression risks before merge.
 ---
 
-# Review Correctness
+# Review Correctness: State, Schema, and Transactions
 
 ## Overview
 
-Use this skill to identify correctness issues in behavior-changing pull requests.
-Focus on whether the code does the right thing under normal, edge, and failure conditions.
+Use this skill to identify state-oriented correctness issues in behavior-changing pull requests.
+Focus on state/data integrity, schema and index semantics, transaction correctness, numerical/time/locale correctness, and state-preservation regressions.
 
 This skill covers correctness discovery only.
 After findings are identified, hand off output rendering to [review-output-format](../review-output-format/SKILL.md).
@@ -32,27 +32,25 @@ This skill accepts exactly three input parameters:
 
 ## Review Flow
 
-1. Build expected behavior model
+1. Scope state/schema/transaction correctness surface
    - Use `code_path` as the working directory.
    - Load and review changes from `diff_filename` as the primary review scope.
-   - Extract requirements, preconditions, and invariants before judging implementation.
-   - Capture feature-flag ON/OFF expectations and contract assumptions.
+   - Identify changed state boundaries: mutations, transactional write sets, schema/DDL/index behavior, and numeric/time/locale data semantics.
 
 2. Run full checklist pass
-   - Use every section in [references/correctness-checklist.md](references/correctness-checklist.md).
+   - Use every section in [references/state-schema-transaction-checklist.md](references/state-schema-transaction-checklist.md).
    - Do not skip sections; mark `N/A` only with a concrete, diff-tied reason.
 
 3. Evaluate each potential issue with evidence
    - Confirm at least one objective signal:
-     - code-path contradiction with requirements/invariants
-     - unsafe state transition or partial update risk
-     - boundary/edge-case handling gap
-     - concurrency/retry/replay correctness risk
-     - external interaction contract violation
+     - illegal state transition or partial-update inconsistency
+     - atomicity/isolation/transaction semantic mismatch
+     - schema/index semantic mismatch causing incorrect persisted/observed outcomes
+     - concrete state-oriented regression scenario
    - If evidence is weak, request targeted validation instead of asserting a defect.
 
 4. Assign severity for handoff
-   - `Blocker`: likely incorrect results, corruption, or integrity/safety break.
+   - `Blocker`: likely integrity break, incorrect persisted state, or major transactional correctness break.
    - `Major`: high-confidence correctness risk with meaningful user or operational impact.
    - `Minor`: localized correctness gap with limited blast radius.
    - `Info` / `Nit`: low-risk observation, clarification, or polish.
@@ -64,8 +62,8 @@ This skill accepts exactly three input parameters:
 
 6. Required output handoff
    - After the correctness pass is complete, invoke [review-output-format](../review-output-format/SKILL.md).
-   - Pass `final_output_json_filename` to that handoff.
-   - Render final findings strictly with that skill's output contract, then write that JSON to `final_output_json_filename`.
+   - Render final findings strictly with that skill's output contract.
+   - Write that JSON to `output_filename`.
 
 ## Runtime Validation Policy
 
@@ -78,13 +76,13 @@ This skill accepts exactly three input parameters:
 ## Review Depth Rules
 
 - Do not emit a no-findings conclusion until every checklist section is passed or explicitly `N/A`.
-- Prioritize behavioral risk over style/structure feedback.
-- For non-trivial findings, include at least one concrete scenario (`input/condition -> incorrect outcome`).
+- Prioritize integrity and transactional risk over style/structure feedback.
+- For non-trivial findings, include at least one concrete scenario (`state/input -> incorrect outcome`).
 - If uncertain, ask for focused tests/validation rather than making a hard claim.
 
 ## References
 
-- Extended correctness checklist:
-  - [references/correctness-checklist.md](references/correctness-checklist.md)
+- State/schema/transaction checklist:
+  - [references/state-schema-transaction-checklist.md](references/state-schema-transaction-checklist.md)
 - Output rendering contract:
   - [review-output-format/SKILL.md](../review-output-format/SKILL.md)
