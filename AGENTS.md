@@ -27,7 +27,7 @@
   1. Run verification and stop if it fails.
   2. Stage all changes, commit with a concise diff-based message, and push the current branch.
   3. Open a PR against `main` with title/description derived from the actual diff.
-  4. Merge the PR.
+  4. Merge the PR (use squash merge by default).
   5. Run cleanup and reset to new work:
      - `git fetch --prune`
      - pull latest `main`

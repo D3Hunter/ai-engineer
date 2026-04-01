@@ -72,6 +72,11 @@ Forbidden in this skill:
 - For step 2, invoke `dispatching-parallel-agents` by workflow intent (parallel, independent tasks).
 - Step 2 MUST use a subagent mechanism. The parent agent MUST NOT run any of the 6 review skills inline.
 - Dispatch all 6 review subagents in one batch so they run concurrently.
+- Every subagent launch in this workflow MUST disable parent-thread history inheritance:
+  - native runtime: set `fork_context=false`
+  - `codex exec` fallback: start a fresh child process with no parent conversation transcript in prompt input
+- If the selected backend cannot guarantee context isolation, stop and return `failed` with reason `context-isolation-unavailable`.
+- Do not reuse stale/open subagents from earlier attempts; use fresh subagents for prepare/review/merge/cleanup calls.
 - Do NOT terminate review subagents just because they are slow. These review skills have no checkpoint/resume, so early termination discards completed in-memory work.
 - Terminate a review subagent only when there is an obvious hang signal (for example: runtime marks the task as stuck/disconnected/crashed, or repeated long-interval health checks show zero state/output changes).
 - Allowed subagent backends (in priority order):
@@ -87,6 +92,11 @@ Forbidden in this skill:
    - Invoke [prepare-pr-diff-worktree](../prepare-pr-diff-worktree/SKILL.md) with:
      - `pr_link`
      - `project_path` (when provided)
+   - If prepare is executed in a subagent, run it in a fresh isolated subagent (`fork_context=false`) and explicitly scope the prompt to prepare only.
+   - Scope-breach guard after prepare:
+     - expected outputs: prepare JSON (`code_path`, `diff_filename`, `work_tree`)
+     - unexpected at this stage: `review-*.json`, `merged-review-output.json`, `github-review-payload.json`
+     - if unexpected artifacts are newly produced by the prepare subagent, treat as `scope-breach`, terminate that subagent, and rerun prepare once in a new isolated subagent
    - Capture output JSON fields:
      - `code_path`
      - `diff_filename`
@@ -108,6 +118,8 @@ Forbidden in this skill:
      - "Inputs: `code_path=<...>`, `diff_filename=<...>`, `output_filename=<...>`."
      - "Write output JSON to exactly `output_filename`."
      - "Run this subagent with `workspace-write` sandbox access."
+     - "Run this subagent with `fork_context=false` (no inherited parent conversation context)."
+     - "Execute only this review step. Do not run prepare, merge, cleanup, or orchestration."
      - "Do not run in parent; execute in this subagent only."
    - Example dispatch shape using native Task/subagent API (conceptual):
      ```text
@@ -165,9 +177,11 @@ Forbidden in this skill:
      - [review-runtime-reliability-performance](../review-runtime-reliability-performance/SKILL.md) -> `review-runtime-reliability-performance.json`
      - [review-scope-structure-abstraction](../review-scope-structure-abstraction/SKILL.md) -> `review-scope-structure-abstraction.json`
      - [review-upgrade-compatibility-and-test-determinism](../review-upgrade-compatibility-and-test-determinism/SKILL.md) -> `review-upgrade-compatibility-and-test-determinism.json`
+   - Scope-breach guard during step 2:
+     - if a review subagent emits prepare/merge/cleanup artifacts (outside its own `output_filename`) as a primary action, treat as `scope-breach` and rerun that reviewer in a fresh isolated subagent
 
 3. Merge and submit review
-   - After all subagents finish, invoke [merge-review-json-and-submit-pr-review](../merge-review-json-and-submit-pr-review/SKILL.md).
+   - After all subagents finish, invoke [merge-review-json-and-submit-pr-review](../merge-review-json-and-submit-pr-review/SKILL.md) in a fresh isolated subagent (`fork_context=false`).
    - Pass:
      - `pr_link`
      - `input_files` = all 6 review JSON files from step 2
@@ -176,7 +190,7 @@ Forbidden in this skill:
      - `payload_output` = `github-review-payload.json`
 
 4. Cleanup (always attempt)
-   - Invoke [cleanup-pr-diff-worktree](../cleanup-pr-diff-worktree/SKILL.md) in a finally-style step.
+   - Invoke [cleanup-pr-diff-worktree](../cleanup-pr-diff-worktree/SKILL.md) in a finally-style step in a fresh isolated subagent (`fork_context=false`).
    - Pass:
      - `work_tree` from prepare output
      - `project_path` when needed by current directory context
@@ -193,9 +207,11 @@ Forbidden in this skill:
 ## Failure Handling
 
 - If prepare fails: stop pipeline and return `failed`.
+- If context isolation cannot be guaranteed for any subagent launch: stop pipeline and return `failed` with reason `context-isolation-unavailable`.
 - If neither native Task/subagent dispatch nor `codex exec` is available in step 2: stop pipeline and return `failed` with reason `subagent-dispatch-unavailable`.
 - If one or more `codex exec` subagents fail to start or exit non-zero, treat as reviewer-subagent failure.
 - Do not run any reviewer inline in the parent as fallback.
+- If a subagent performs out-of-scope orchestration work, treat as `scope-breach`, terminate it, and retry that step in a fresh isolated subagent. If retry still breaches scope, return `partial-failure` with reason `scope-breach`.
 - If one or more review subagents fail:
   - do not kill other in-flight review subagents unless they also show obvious hang signals
   - continue waiting for all non-hung subagents to finish and collect any completed outputs
