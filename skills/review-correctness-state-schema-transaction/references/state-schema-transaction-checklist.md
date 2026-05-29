@@ -5,6 +5,7 @@
 - Complete every section in this checklist.
 - If a section is not relevant, mark it `N/A` with a concrete reason tied to the diff.
 - Do not conclude "no findings" until each section is passed or explicitly `N/A` with rationale.
+- If sections 7/8 apply, keep an internal boundary trace table (normal + boundary rows); no-findings output is invalid without it.
 
 ## Out Of Scope (Route Elsewhere)
 
@@ -78,6 +79,32 @@ Before filing a finding, capture at least one objective signal:
 - Default/config changes do not silently alter persisted behavior unexpectedly.
 - Legacy/new state paths remain equivalent where equivalence is required.
 - Prior state-integrity bugfix scenarios touched by this diff remain preserved.
+
+### 7) Cross-Boundary Serialization/Framing Contracts
+
+- Producer/consumer contracts for persisted or stateful record framing are explicit and preserved.
+- Delimiter-only/sentinel artifacts (for example trailing empty tokens) cannot be promoted into meaningful state transitions.
+- Delimiter-only artifacts encountered while a partial/pending block is non-empty are treated as framing noise, not as state payload.
+- Partial records split across chunk/file boundaries are reassembled deterministically without state corruption.
+- Boundary artifacts cannot trigger parser fallbacks that silently drop valid state mutations/records.
+- Fallback/error branches distinguish framing artifacts from malformed logical records before resetting flags or offsets.
+
+### 8) Cross-Function State-Machine Trace (Required)
+
+- Trace one normal path and one boundary path across at least two changed functions.
+- Boundary path must include at least one delimiter-at-chunk-end scenario where the next chunk continues the same logical record.
+- Boundary trace must cover matrix combinations: pending empty/non-empty x token empty/non-empty x path direction.
+- Verify each transition preserves legal state-machine progression (including rollback/cleanup expectations).
+- Verify early-return branches do not bypass required state handoff, cleanup, or invariant checks.
+- Verify caller/callee assumptions for ordering, offsets, and markers are mutually consistent.
+- Inspect unchanged neighboring fallback branches that share those markers/flags before concluding pass.
+
+### 9) Targeted Validation Request Template (When Evidence Is Incomplete)
+
+- Request one minimal adversarial scenario that exercises a boundary split and expected persisted/observed result.
+- Prefer checks that compare equivalent logical input under alternate ingestion/scanning paths.
+- Include one case where chunk N ends exactly with delimiter and chunk N+1 continues the same logical record.
+- Request exact command and expected assertion to minimize ambiguity in follow-up validation.
 
 ## Output Handoff Rules
 

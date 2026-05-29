@@ -5,6 +5,7 @@
 - Complete every section in this checklist.
 - If a section does not apply, mark it `N/A` with a concrete reason tied to the actual diff.
 - Do not conclude "no findings" until every section is either passed or `N/A` with evidence.
+- If sections 9/10 apply, keep an internal boundary trace table (normal + boundary rows); no-findings output is invalid without it.
 
 ## Out Of Scope (Route Elsewhere)
 
@@ -89,6 +90,40 @@ Before filing a finding, capture at least one objective signal:
 - Renamed fields/parameters remain correctly mapped at all touched call sites.
 - Legacy and new code paths remain behaviorally equivalent where equivalence is required.
 - Existing bugfix edge cases touched by this diff are still covered by logic and tests.
+
+### 9) Stream Framing and Tokenization Contracts
+
+- Producer/consumer contracts for line/token shape are explicit and preserved.
+- Delimiter-only artifacts (for example trailing `""` from split-on-newline) cannot be misinterpreted as meaningful record content.
+- Delimiter-only artifacts encountered while a partial/pending block is non-empty are handled as framing noise, not appended as record payload.
+- Record boundaries remain correct when records span chunks, files, or read buffers.
+- Reverse-scan and forward-scan paths preserve equivalent record semantics for the same source input.
+- Error/fallback branches do not silently discard valid records after benign framing artifacts.
+- Fallback/error paths classify framing artifacts separately from malformed logical records before mutating state flags.
+
+### 10) Cross-Function State-Machine Trace (Required)
+
+- Trace one normal-path scenario across at least two changed functions (`input -> intermediate state -> output`).
+- Trace one boundary-path scenario across the same handoff (for example empty token, split record, offset reset, start-flag transition).
+- Boundary path must include at least one delimiter-at-chunk-end scenario where the next chunk continues the same logical record.
+- Boundary trace must cover matrix combinations: pending empty/non-empty x token empty/non-empty x scan-direction path.
+- Verify state flags reset only on true semantic boundaries, not on framing noise.
+- Verify caller/callee assumptions (offsets, ordering, start/end markers) are mutually consistent.
+- Inspect unchanged neighboring fallback branches that share those flags/markers before concluding pass.
+
+### 11) Planner Operator-Preservation and Early-Return Guards
+
+- Any function that receives a pushdown/rewrite operator and returns `self` is checked for semantic operator preservation.
+- Early-return branches either preserve upstream operator semantics or re-attach equivalent operators explicitly.
+- Pushdown hints are treated as optimization hints only and do not alter result semantics.
+- Offset/count overflow handling keeps semantic bounds valid and deterministic.
+
+### 12) Targeted Validation Request Template (When Evidence Is Incomplete)
+
+- Request one minimal adversarial case with exact input shape and expected output.
+- Prefer boundary-focused cases: delimiter-at-boundary, split-across-buffer, split-across-file, and reversed-order scan parity.
+- Include one case where chunk N ends exactly with delimiter and chunk N+1 continues the same record.
+- Prefer invariance checks: same dataset parsed via alternate path should produce equivalent logical rows.
 
 ## Output Handoff Rules
 
