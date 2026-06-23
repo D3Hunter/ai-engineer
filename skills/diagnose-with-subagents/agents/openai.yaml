@@ -1,0 +1,4 @@
+interface:
+  display_name: "Diagnose With Subagents"
+  short_description: "Coordinate read-only incident diagnosis"
+  default_prompt: "Use $diagnose-with-subagents to diagnose a stuck TiDB checksum with read-only subagents."
