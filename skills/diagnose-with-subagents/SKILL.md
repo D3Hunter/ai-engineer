@@ -1,6 +1,6 @@
 ---
 name: diagnose-with-subagents
-description: Use when diagnosing CI/Prow/Jenkins failures, TiDB/TiKV/PD/Kubernetes incidents, stuck import/checksum/add-index work, region miss errors, or other read-only incidents where the user asks for fresh subagents, scoped subtasks, or parent coordination.
+description: Use when diagnosing production, CI, Prow, Jenkins, TiDB, TiKV, PD, Kubernetes, Clinic, Loki, metrics, stuck import/checksum/add-index work, region miss errors, or read-only incidents needing coordinated evidence lanes.
 ---
 
 # Diagnose With Subagents
@@ -19,6 +19,38 @@ Core rule: diagnose first, mutate never. Do not change CI, Kubernetes, database,
 - Keep the parent as coordinator: parse the user request, set guardrails, dispatch, reconcile, and synthesize.
 - Let the parent inspect raw evidence only to verify contradictions, fill a precise gap, or prepare a narrow follow-up.
 - Treat every diagnosis as read-only by default.
+
+## Parent Evidence Embargo
+
+Until the first global-view subagent returns, the parent MUST NOT inspect incident evidence.
+
+Allowed before the global-view result:
+
+- Parse the user request and constraints.
+- Read required local instructions and this skill.
+- Discover the subagent tool if needed.
+- Spawn the global-view subagent.
+- Wait for the global-view subagent.
+
+Forbidden before the global-view result:
+
+- No log, metrics, production API, database, Kubernetes, CI, cloud, or repository code evidence commands.
+- No `clinic`, Loki, Prometheus, `kubectl`, `gh`, SQL, object-store, or code-search queries about the incident.
+- No "quick read-only check" while the subagent runs.
+
+The usual habit of doing background work while an agent runs does not apply here. This skill is stricter: wait for the global-view subagent before investigating.
+
+## Parent Raw Evidence Exception
+
+The parent may inspect raw evidence only after all are true:
+
+1. The global-view subagent has returned.
+2. The parent has normalized the problem frame.
+3. The parent has dispatched scoped lanes or identified a precise contradiction/gap.
+4. The parent states the exact reason the read cannot be delegated or must be verified directly.
+5. The read answers one named question with a bounded command/query.
+
+Allowed parent reads are exception reads, not investigation lanes. If the parent needs more than one or two related commands, spawn a fresh scoped subagent instead.
 
 ## Read-Only Guardrails
 
@@ -58,6 +90,21 @@ Explicitly pass these guardrails to every subagent:
 6. Produce the final diagnosis.
    - Include probable cause, supporting evidence, ruled-out causes, residual uncertainty, and next read-only checks or remediation suggestions.
    - If evidence is insufficient, say what is missing instead of inventing a cause.
+
+## Coordination Ledger
+
+For non-trivial diagnoses, maintain a visible checklist with these phases:
+
+1. Frame request and constraints.
+2. Spawn global-view subagent.
+3. Wait for global-view result.
+4. Normalize problem frame.
+5. Dispatch scoped lanes.
+6. Reconcile lane reports.
+7. Run only justified parent exception reads, if needed.
+8. Final synthesis.
+
+Do not mark a phase complete until its required evidence exists. Do not begin parent evidence collection while the global-view subagent is still running.
 
 ## Subagent Prompt Contract
 
@@ -126,16 +173,45 @@ Do not inspect TiDB logs in the parent first. Launch one global-view subagent fo
 ## Red Flags
 
 - "I'll just inspect the logs first" before global discovery.
+- "While the subagent runs, I will check..."
+- "This is just a quick Loki/Clinic/metrics/code query."
+- "This is only read-only."
+- "I need one broad query to orient myself."
 - "This subagent can cover everything" instead of scoped lanes.
 - "Read-only exec is harmless" without a narrow reason and parent approval.
 - "The fix is obvious" before timeline and first abnormal signal are established.
 - "No need to mention forbidden commands" in subagent prompts.
 
+When a red flag appears, do not run the command. Either wait for the current subagent or dispatch a fresh scoped subagent.
+
+## Parent Rationalization Traps
+
+| Rationalization | Reality |
+| --- | --- |
+| "It is read-only, so it is safe." | Read-only can still violate this workflow. Safety is not the only requirement; orchestration discipline is required. |
+| "I will just inspect logs while the global subagent runs." | That duplicates the global-view lane and breaks the parent/coordinator boundary. Wait. |
+| "I need to understand the code first." | Code correlation is a scoped lane unless the global-view result identifies a precise gap. |
+| "I am only checking command syntax." | Use help text only when needed to formulate subagent prompts; do not query incident evidence. |
+| "This will be faster if I do it myself." | This skill optimizes correctness and auditability, not parent speed. Spawn lanes. |
+| "The parent is allowed to fill gaps." | Only after the global result and scoped lanes define a specific gap or contradiction. |
+
+## Violation Recovery
+
+If the parent runs broad evidence collection before the global-view subagent returns:
+
+1. Stop immediately.
+2. Do not continue building on parent-collected evidence.
+3. Close or wait for active subagents as appropriate.
+4. Tell the user the workflow was violated.
+5. Restart from the global-view result or ask whether to continue with a corrected lane-based workflow.
+
+Do not silently fold parent-collected evidence into the diagnosis.
+
 ## Common Mistakes
 
 | Mistake | Fix |
 | --- | --- |
-| Parent starts reading logs before the global-view subagent | Stop and launch the fresh global-view subagent first. |
+| Parent starts reading logs, metrics, code, or Clinic/Loki evidence before the global-view subagent returns | Stop, disclose the violation, and restart from a corrected lane-based workflow. |
 | One subagent gets "diagnose everything" | Split into bounded lanes after global discovery. |
 | Subagents mutate while "just checking" | Put forbidden commands directly in every prompt. |
 | Log collection is too broad | Require component, namespace, time window, and tail/filter limits. |
