@@ -1,0 +1,4 @@
+interface:
+  display_name: "Monitor PR CI"
+  short_description: "Watch PR CI and handle repeated failures"
+  default_prompt: "Use $monitor-pr-ci to monitor this PR, keep retesting ordinary flakes and possible flake fixes, and handle other CI failures within the test-only fix boundary."
