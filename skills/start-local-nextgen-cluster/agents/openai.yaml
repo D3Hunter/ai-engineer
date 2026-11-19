@@ -1,0 +1,4 @@
+interface:
+  display_name: "Start Local NextGen Cluster"
+  short_description: "Launch the local NextGen TiKV test cluster"
+  default_prompt: "Use $start-local-nextgen-cluster to start the local components needed for realtikvtests."
