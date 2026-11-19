@@ -45,8 +45,8 @@ Return one actionable issue per finding: severity, concise title, precise `path:
 
 ## Deliver and Clean Up
 
-Return the review in the conversation. Post to GitHub only when requested, using one comment review unless the user asked for approval or changes requested. Anchor actionable findings to valid diff lines; put unanchored findings in the summary. Include brief AI attribution and a manual follow-up note.
+Return the review in the conversation. For a GitHub PR, post directly without further confirmation unless the user requests a draft or chat-only review, using one comment review unless the user asked for approval or changes requested. For a local diff without a GitHub PR target, deliver in chat. Anchor actionable findings to valid diff lines; put unanchored findings in the summary. Include brief AI attribution and a manual follow-up note.
 
 Before posting, confirm the PR head still matches the reviewed SHA. If it moved, update the pinned target, inspect the new changes, and revalidate retained findings and affected coverage before posting; otherwise deliver the draft in chat with the stale-target limitation. Attach the review to the reviewed head commit. After an uncertain submission outcome, check existing reviews before retrying to avoid duplicates. Preserve the review if posting fails.
 
-After all reviewers stop using the code, attempt cleanup even on failure. Remove only temporary resources created by this run; preserve unexpected changes and report them. Keep findings available in the conversation before removal. Finish with coverage limitations, the submission link when posted, and any cleanup issue.
+After the posting attempt (or chat delivery when submission is skipped) and once all reviewers stop using the code, attempt cleanup even on failure. Remove only temporary resources created by this run; preserve unexpected changes and report them. Keep findings available in the conversation before removal. Finish with coverage limitations, the submission link when posted, and any cleanup issue.
