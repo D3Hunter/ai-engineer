@@ -1,27 +1,14 @@
-i want to write a skill to review things related to “Code Structure, Encapsulation, and Duplication”
-This skill accepts exactly three input parameters:
+Extend the maintainability reference in `skills/review-github-pr/references/maintainability.md`. Keep review guidance in the single `review-github-pr` skill rather than creating another scope skill.
 
-- `code_path` (required): absolute path to the cloned codebase; this is the working directory for review.
-- `diff_filename` (required): filename of the diff to review.
-- `output_filename` (required): final output JSON filename for the rendered findings payload.
+Inputs:
 
-its output
+- `code_path`: absolute path to the codebase to inspect.
+- Review target: a supplied diff (file or prompt content), or pinned base/head revisions.
 
-- Final output must be a file named exactly as `output_filename`.
-- File content format is already defined by [review-output-format](../review-output-format/SKILL.md).
-- Do not invent or emit an alternate output schema.
+Follow the common evidence, severity, reporting, and static-review contract in `skills/review-github-pr/SKILL.md` instead of duplicating it in the reference.
 
+Add only guidance that changes review decisions: concrete risk triggers, non-obvious invariants, and useful counterexamples. Apply checks when the diff touches their contracts. Treat naming and abstraction preferences as prompts to investigate, not automatic defects.
 
-the reviewed finding risks(severity) are
-Blocker
-Major
-Minor
-Info
-Nit
+Reuse existing conditional references when relevant, especially `streaming-framing.md` for chunked record handling. Avoid exhaustive completion/N/A requirements, phrase banks, fixed reviewer counts, and intermediate output schemas.
 
-for each finding, you should include
-- `severity`, `title`, `why`, `scope`, `risk_if_unchanged`, `evidence`, `change_request`.
-- Keep scope concrete (`path:line`, module, branch, or scenario boundary).
-
-
-all below are some raw materials or checklist items you can use:
+Use the following raw materials to build a focused checklist:

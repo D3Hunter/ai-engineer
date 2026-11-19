@@ -1,23 +1,25 @@
 # Split `review-correctness` Into Two Faster Skills
 
+> Historical plan. The scope split remains in use as reference files inside one skill; the separate scope skills, three-parameter interface, JSON outputs, and helper-skill handoffs below have been superseded by the [current review workflow](../skills/review-github-pr/SKILL.md).
+
 ## Summary
 - Replace the monolithic correctness reviewer with two standalone correctness skills, each with a smaller checklist and tighter scope.
 - Keep the overall PR review pipeline behavior the same, but update orchestration from 5 to 6 parallel reviewers.
 - Use a dedup-first method: first remove overlap with existing runtime/compatibility reviewers, then split remaining correctness checks evenly.
 
 ## Public Interface Changes
-- Remove legacy skill entrypoint at [skills/review-correctness/SKILL.md](/Users/jujiajia/playground/ai-engineer/skills/review-correctness/SKILL.md) (full replace, no compatibility shim).
+- Remove legacy skill entrypoint at `skills/review-correctness/SKILL.md` (historical path, removed) (full replace, no compatibility shim).
 - Add two new skill entrypoints (same 3-parameter interface as existing reviewers):
 1. `review-correctness-query-planner-execution`
 2. `review-correctness-state-schema-transaction`
 - Keep input/output contract unchanged for both new skills:
 1. Inputs: `code_path`, `diff_filename`, `output_filename`
 2. Output: JSON formatted by `review-output-format`
-- Update orchestrator at [skills/orchestrate-github-pr-review/SKILL.md](/Users/jujiajia/playground/ai-engineer/skills/orchestrate-github-pr-review/SKILL.md) to dispatch 6 reviewers and include 2 correctness output files.
+- Update orchestrator at [review-github-pr](../skills/review-github-pr/SKILL.md) to dispatch 6 reviewers and include 2 correctness output files.
 - `review_outputs` remains a list in orchestration summary JSON, now with 6 entries (accepted change).
 
 ## Implementation Changes
-1. Build an explicit section mapping from [correctness-checklist.md](/Users/jujiajia/playground/ai-engineer/skills/review-correctness/references/correctness-checklist.md) before editing:
+1. Build an explicit section mapping from `correctness-checklist.md` (historical source, removed after consolidation) before editing:
    - `Query/Planner/Execution` skill owns: Business logic, control-flow correctness, input/output semantics, positional shape correctness, SQL semantics, parser/binder, optimizer/planning, execution-engine correctness, behavior-preservation regression traps.
    - `State/Schema/Transaction` skill owns: State/data integrity, DDL/schema correctness (non-upgrade-operational parts), index correctness (semantic/data-integrity parts), transaction correctness (semantic/integrity parts), numerical/time/locale correctness, state-oriented regression traps.
    - Move out of correctness entirely (do not duplicate): Locking/MVCC/concurrency lifecycle checks to `review-runtime-reliability-performance`; external interaction compatibility/fallback checks to runtime/compatibility skills.
