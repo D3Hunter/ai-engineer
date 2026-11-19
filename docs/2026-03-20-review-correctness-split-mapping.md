@@ -1,5 +1,7 @@
 # Correctness Split Mapping (Dedup-First)
 
+> Historical mapping. These scopes now live as references in the single [PR review skill](../skills/review-github-pr/SKILL.md); the separate skill names below describe the earlier layout.
+
 Source checklist: legacy monolithic correctness checklist (captured before split)
 
 Legend:
