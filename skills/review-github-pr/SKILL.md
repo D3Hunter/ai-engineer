@@ -45,7 +45,9 @@ Return one actionable issue per finding: severity, concise title, precise `path:
 
 ## Deliver and Clean Up
 
-Return the review in the conversation. For a GitHub PR, post directly without further confirmation unless the user requests a draft or chat-only review, using one comment review unless the user asked for approval or changes requested. For a local diff without a GitHub PR target, deliver in chat. Anchor actionable findings to valid diff lines; put unanchored findings in the summary. Include brief AI attribution and a manual follow-up note.
+The user has given standing authorization to publish the completed review on the GitHub PR they ask you to review. A request such as `review <PR URL>` activates that authorization, including when this skill is selected automatically. Submit one GitHub comment review, even when there are no findings, then return the review link and a summary in chat. No separate request to post is needed. Use an approval or changes-requested review only when the user asks for that action.
+
+Honor a draft or chat-only request and deliver a local diff review in chat when no GitHub PR is identified. Anchor actionable findings to valid diff lines and put unanchored findings in the summary. Include brief AI attribution and a manual follow-up note.
 
 Before posting, confirm the PR head still matches the reviewed SHA. If it moved, update the pinned target, inspect the new changes, and revalidate retained findings and affected coverage before posting; otherwise deliver the draft in chat with the stale-target limitation. Attach the review to the reviewed head commit. After an uncertain submission outcome, check existing reviews before retrying to avoid duplicates. Preserve the review if posting fails.
 
